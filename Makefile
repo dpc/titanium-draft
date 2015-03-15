@@ -1,47 +1,22 @@
-RUSTC=rustc
-
 LIBCORE_SRC ?= $(shell pwd)/opt/rust/src/libcore
 
-O ?= build
+O ?= $(shell pwd)/build
 
-ARCH=aarch64
-include rt/$(ARCH)/Makefile.include
-TARGET_FILE=rt/$(ARCH)/target.json
-
-CC=$(CROSS_COMPILE)gcc
-AR=$(CROSS_COMPILE)ar
-AS=$(CROSS_COMPILE)as
-OBJCOPY=$(CROSS_COMPILE)objcopy
-OBJDUMP=$(CROSS_COMPILE)objdump
-
-RSFLAGS += -O -g
-CFLAGS += -O2
-
-COMMON_FLAGS += -g
-COMMON_FLAGS += -Wall -nostdlib
+include titanium/Makefile.common
 
 AFLAGS += -D__ASSEMBLY__ $(COMMON_FLAGS) -Ic/include
-CFLAGS += $(COMMON_FLAGS) -Ic/include
-LDFLAGS += $(COMMON_FLAGS)
-
-RSFLAGS += --cfg arch_$(ARCH)
-LDFLAGS +=
-CFLAGS += -Irt/$(ARCH)/include/
 
 .PHONY: all
 
 all: $(O)/kernel.hex $(O)/kernel.bin
 
 RS_SRCS := $(shell find src -name '*.rs')
-
-RS_CPP_SRCS := $(shell find src -name '*.rs.cpp')
-RS_CPP_OUTS := $(RS_CPP_SRCS:.rs.cpp=_auto.rs)
-
 RT_SRCS=rt/$(ARCH)/head.S
 
 RT_OBJS = $(RT_SRCS:.c=.o)
 RT_OBJS := $(RT_OBJS:.S=.o)
 
+LIBS := $(shell find libs -name 'Makefile')
 
 RT_OBJS := $(addprefix $(O)/,$(RT_OBJS))
 
@@ -58,14 +33,15 @@ $(O)/%.o: %.S
 	$(CC) $(AFLAGS) -c $< -o $@
 	$(CC) $(AFLAGS) -MM -MT$@ -MF$@.d -c $<
 
-%_auto.rs: %.rs.cpp
-	$(CC) -E -P $< -o $@
+$(TARGET_FILE): titanium/src/arch/$(ARCH)/target.json
+	mkdir -p $(O)
+	cp -f $< $@
 
-$(O)/libcompiler-rt.a: $(RT_OBJS)
+$(O)/libcompiler-rt.a: $(RT_OBJS) $(TARGET_FILE)
 	mkdir -p $(dir $@)
 	$(AR) rcs $@ $(RT_OBJS)
 
-$(O)/libcore.rlib: $(LIBCORE_SRC)/lib.rs
+$(O)/libcore.rlib: $(LIBCORE_SRC)/lib.rs $(TARGET_FILE)
 	mkdir -p $(dir $@)
 	$(RUSTC) --target $(TARGET_FILE) \
 		$(RSFLAGS) \
@@ -74,12 +50,19 @@ $(O)/libcore.rlib: $(LIBCORE_SRC)/lib.rs
 		$(LIBCORE_SRC)/lib.rs \
 		-o $@
 
-$(O)/kernel.elf: $(RS_SRCS) $(RS_CPP_OUTS) \
+$(O)/libtitanium.rlib: $(O)/libcore.rlib $(TARGET_FILE) FORCE
+	cd titanium; make O=$(O)
+
+$(LIBS): FORCE
+	cd $(dir $@) && make O=$(O) TARGET_FILE=$(TARGET_FILE)
+
+# libtitanium added manualy to resovle static library linking ordering issues
+$(O)/kernel.elf: $(RS_SRCS) $(O)/libtitanium.rlib $(LIBS) \
 	$(O)/libcore.rlib $(O)/libcompiler-rt.a rt/$(ARCH)/kernel.ld
 	$(RUSTC) --target $(TARGET_FILE) \
 		$(RSFLAGS) \
 		-A non_camel_case_types -A dead_code -A non_snake_case \
-		-C link-args="$(LDFLAGS) -Trt/$(ARCH)/kernel.ld" -L$(O) -Z print-link-args \
+		-C link-args="$(LDFLAGS) -Trt/$(ARCH)/kernel.ld $(O)/libtitanium.rlib" -L$(O) -Z print-link-args \
 		src/main.rs \
 		-o $@
 
@@ -91,22 +74,27 @@ $(O)/kernel.bin: $(O)/kernel.elf
 
 .PHONY: clean
 clean:
+	echo 'Use `make fullclean` for a full cleaning'
+	cd titanium && make clean
 	rm -f $(RT_OBJS) $(RT_OBJS_DEPS) $(O)/*.a $(O)/kernel.* $(RS_CPP_OUTS)
 
-.PHONY: cleanall
-cleanall: clean
+.PHONY: fullclean
+fullclean: clean
 	rm -f $(O)/*.rlib
 
 .PHONY: objdump
 objdump:
 	$(OBJDUMP) -D $(O)/kernel.elf
 
+.PHONY: run
+run: qemu
+
 .PHONY: qemu
 qemu: qemu-$(ARCH)
 
 .PHONY: qemu-aarch64
 qemu-aarch64:
-	qemu-system-aarch64 -s -nographic -machine vexpress-a15 -cpu cortex-a57 -m 2048 -kernel $(O)/kernel.bin
+	qemu-system-aarch64 -nographic -machine vexpress-a15 -cpu cortex-a57 -m 2048 -kernel $(O)/kernel.bin
 
 .PHONY: qemu-gdb
 qemu-gdb:

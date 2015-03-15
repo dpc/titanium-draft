@@ -1,0 +1,31 @@
+TARGET_FILE=$(O)/target.json
+
+ARCH ?= aarch64
+
+TOP := $(dir $(lastword $(MAKEFILE_LIST)))
+include $(TOP)/src/arch/$(ARCH)/Makefile.include
+
+# Don't use default rules
+.SUFFIXES:
+
+
+RUSTC ?= rustc
+CC = $(CROSS_COMPILE)gcc
+AR = $(CROSS_COMPILE)ar
+AS = $(CROSS_COMPILE)as
+OBJCOPY = $(CROSS_COMPILE)objcopy
+OBJDUMP = $(CROSS_COMPILE)objdump
+
+RSFLAGS += -O -g
+CFLAGS += -O2
+
+COMMON_FLAGS += -g
+COMMON_FLAGS += -Wall -nostdlib
+
+AFLAGS += -D__ASSEMBLY__ $(COMMON_FLAGS) -Ic/include
+CFLAGS += $(COMMON_FLAGS) -Ic/include
+LDFLAGS += $(COMMON_FLAGS)
+
+RSFLAGS += --cfg arch_$(ARCH)
+LDFLAGS +=
+CFLAGS += -Irt/$(ARCH)/include/

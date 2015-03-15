@@ -1,17 +1,14 @@
+mod pagetable;
 
-mod consts_auto;
-
-use self::consts_auto::*;
+pub use titanium::arch::consts::*;
+pub use self::pagetable::PageTable;
 
 pub const NAME : &'static str = "aarch64";
 
-pub fn cpu_id() -> u8 {
-    let mut reg : u64;
-    unsafe {
-        asm!("mrs $0, mpidr_el1"
-          : "=r"(reg)
-          );
-    }
+pub const PTE_ATTRS_MMIO : u64 = 1 << PTE_XN_SHIFT;
+pub const PTE_ATTRS_RAM : u64 = PTE_AP_RW << PTE_AP_SHIFT;
+pub const PAGE_SIZE : usize = 64 * 1024;
 
-    (reg & MPIDR_AFF0_MASK) as u8
+pub fn cpu_id() -> u8 {
+    (reg64_read!(mpidr_el1) & MPIDR_AFF0_MASK) as u8
 }

@@ -2,7 +2,7 @@ ENTRY(_start)
 
 MEMORY
 {
-  RAM (xrw)       : ORIGIN = 0x80080000, LENGTH = 192K
+  RAM (xrw)       : ORIGIN = 0x80080000, LENGTH = 16M
 }
 
 SECTIONS
@@ -45,6 +45,13 @@ SECTIONS
 
     . = ALIGN(8);
     _bss_start = .;
+
+    . = ALIGN(64K);
+    _pt_start = .;
+    . += 64K * 16;
+    _pt_end = .;
+
+    . = ALIGN(8);
     *(.bss)
     *(.bss*)
     *(COMMON)

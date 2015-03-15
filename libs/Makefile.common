@@ -1,0 +1,18 @@
+
+TOP := $(dir $(lastword $(MAKEFILE_LIST)))
+include $(TOP)/../titanium/Makefile.common
+
+RS_SRCS := $(shell find . -name '*.rs')
+
+all: $(O)/$(LIB_NAME).rlib
+
+$(O)/$(LIB_NAME).rlib: $(RS_SRCS)
+	rustc \
+		--target $(TARGET_FILE) \
+		$(RSFLAGS) \
+		--crate-name=$(LIB_NAME) \
+		--out-dir=$(O) \
+		-L$(O) \
+		--crate-type=rlib \
+		lib.rs
+
